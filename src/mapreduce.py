@@ -1,11 +1,14 @@
 import re
 import time
-from collections import defaultdict, Counter
+from collections import Counter
 import pandas as pd
-from scipy.sparse import csr_matrix, vstack
+from scipy.sparse import csr_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
+import itertools
 
 def map_function(email):
     # Tokenize the email text into words
@@ -27,13 +30,32 @@ def process_file(file_path, email_column='body', chunk_size=1000):
         labels.extend(chunk['label'].tolist())
     return all_word_counts, labels
 
+def plot_confusion_matrix(cm, classes, title='Confusion matrix', cmap=plt.cm.Blues):
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = range(len(classes))
+    plt.xticks(tick_marks, classes, rotation=45)
+    plt.yticks(tick_marks, classes)
+
+    fmt = 'd'
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j, i, format(cm[i, j], fmt),
+                 horizontalalignment="center",
+                 color="white" if cm[i, j] > thresh else "black")
+
+    plt.ylabel('Actual label')
+    plt.xlabel('Predicted label')
+    plt.tight_layout()
+
 def main():
     print("Starting main function")
     start_time = time.time()
 
     # Base directory for the data file
     # IMPORTANT TO CHANGE THIS TO WHATEVER YOURE PATH IS:
-    base_dir = '/Users/andresportillo/Documents/CAP4770-Phishing-Project/data/'
+    base_dir = '/Users/justinsanabria/CAP4770-Phishing-Project/data/'
 
     # List of CSV files to process
     csv_files = [
@@ -108,6 +130,12 @@ def main():
     print(f'Accuracy: {accuracy}')
     print(classification_report(y_test, y_pred))
     print(f"Total time taken: {time.time() - start_time} seconds")
+
+    # Plotting the confusion matrix
+    cm = confusion_matrix(y_test, y_pred)
+    plt.figure()
+    plot_confusion_matrix(cm, classes=['Actual', 'Phishing'], title='Confusion Matrix')
+    plt.show()
 
 if __name__ == "__main__":
     main()
