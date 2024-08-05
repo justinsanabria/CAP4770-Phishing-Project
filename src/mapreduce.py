@@ -9,6 +9,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 import matplotlib.pyplot as plt
 import seaborn as sns
 import itertools
+import text2emotion as te
 
 def map_function(email):
     # Tokenize the email text into words
@@ -19,6 +20,7 @@ def map_function(email):
 def process_file(file_path, email_column='body', chunk_size=1000):
     print(f"Processing file: {file_path}")
     all_word_counts = []
+    all_emotion_scores = []
     labels = []
     for chunk in pd.read_csv(file_path, chunksize=chunk_size):
         print(f"Processing chunk of size {chunk.shape}")
@@ -26,9 +28,11 @@ def process_file(file_path, email_column='body', chunk_size=1000):
         chunk[email_column] = chunk[email_column].fillna('')
         for email in chunk[email_column]:
             word_counts = map_function(email)
+            emotion_scores = te.get_emotion(email)
             all_word_counts.append(word_counts)
+            all_emotion_scores.append(emotion_scores)
         labels.extend(chunk['label'].tolist())
-    return all_word_counts, labels
+    return all_word_counts, all_emotion_scores, labels
 
 def plot_confusion_matrix(cm, classes, title='Confusion matrix', cmap=plt.cm.Blues):
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
@@ -55,7 +59,7 @@ def main():
 
     # Base directory for the data file
     # IMPORTANT TO CHANGE THIS TO WHATEVER YOURE PATH IS:
-    base_dir = '/Users/justinsanabria/CAP4770-Phishing-Project/data/'
+    base_dir = '/Users/bernardo/Programming/Git/UF-CS-Classwork/CAP4770 - Intro to Data Science/CAP4770-Phishing-Project/Data/'
 
     # List of CSV files to process
     csv_files = [
@@ -72,10 +76,12 @@ def main():
 
     # Process each file and combine results
     all_word_counts = []
+    all_emotion_scores = []
     labels = []
     for file_path in csv_files:
-        file_word_counts, file_labels = process_file(file_path, email_column=email_column)
+        file_word_counts, file_emotion_scores, file_labels = process_file(file_path, email_column=email_column)
         all_word_counts.extend(file_word_counts)
+        all_emotion_scores.extend(file_emotion_scores)
         labels.extend(file_labels)
 
     print("Finished processing files")
@@ -131,10 +137,53 @@ def main():
     print(classification_report(y_test, y_pred))
     print(f"Total time taken: {time.time() - start_time} seconds")
 
+    # Now do a second model with emotion scores
+    # Create a sparse matrix where each row corresponds to an email and each column to a word
+    row_ind_emotion = []
+    col_ind_emotion = []
+    data_emotion = []
+    emotion_index = {'Angry': 0, 'Fear': 1, 'Happy': 2, 'Sad': 3, 'Surprise': 4}
+    for i, emotions in enumerate(all_emotion_scores):
+        for emotion in emotions:
+            row_ind_emotion.append(i)
+            col_ind_emotion.append(emotion_index[emotion])
+            data_emotion.append(emotions[emotion])
+
+    X_emotion = csr_matrix((data_emotion, (row_ind_emotion, col_ind_emotion)), shape=(len(all_emotion_scores), len(emotion_index)))
+    print(f"Feature matrix shape: {X_emotion.shape}")
+    print(f"Time taken to create feature matrix: {time.time() - start_time} seconds")
+
+    y_emotion = pd.Series(labels)
+    print(f"Labels length: {len(y_emotion)}")
+
+    # Ensure X and y have the same number of samples
+    if X_emotion.shape[0] != y_emotion.shape[0]:
+        print("Mismatch between number of samples in features and labels.")
+        return
+
+    # Split the data
+    print("Splitting data into train and test sets")
+    X_emotion_train, X_emotion_test, y_emotion_train, y_emotion_test = train_test_split(X_emotion, y_emotion, test_size=0.2, random_state=42)
+    print("Data split completed")
+
+    # Initialize and train the classifier model
+    print("Training the model")
+    model_emotion = RandomForestClassifier(n_estimators=100, random_state=42)
+    model_emotion.fit(X_emotion_train, y_emotion_train)
+    print("Model training completed")
+
+    # Make predictions and evaluate the model
+    print("Making predictions")
+    y_emotion_pred = model_emotion.predict(X_emotion_test)
+    accuracy = accuracy_score(y_emotion_test, y_emotion_pred)
+    print(f'Accuracy: {accuracy}')
+    print(classification_report(y_emotion_test, y_emotion_pred))
+    print(f"Total time taken: {time.time() - start_time} seconds")
+
     # Plotting the confusion matrix
-    cm = confusion_matrix(y_test, y_pred)
+    cm_emotion = confusion_matrix(y_emotion_test, y_emotion_pred)
     plt.figure()
-    plot_confusion_matrix(cm, classes=['Actual', 'Phishing'], title='Confusion Matrix')
+    plot_confusion_matrix(cm_emotion, classes=['Actual', 'Phishing'], title='Confusion Matrix')
     plt.show()
 
 if __name__ == "__main__":
